@@ -791,10 +791,38 @@ const ReviewSection = () => {
   
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/1CXKrIDh9jUlYyOQFfrmpe6hDc8vC-OUMBTQ9RJuy0Ug/edit";
 
+  const fallbackReviews: Review[] = [
+    {
+      name: "Madhu Nikhil",
+      rating: 5,
+      review: "Excellent service, I highly recommend others."
+    },
+    {
+      name: "Lavanya Challagundla",
+      rating: 5,
+      review: "Service was good"
+    },
+    {
+      name: "SIDDU Mk",
+      rating: 5,
+      review: "Good reasonable price"
+    },
+    {
+      name: "Lonke Krishna",
+      rating: 5,
+      review: "Nice work"
+    }
+  ];
+
   // Load reviews on mount
   useEffect(() => {
     fetchReviewsFromSheet(SHEET_URL)
       .then(data => {
+        if (data.length === 0) {
+          setDynamicReviews(fallbackReviews);
+          return;
+        }
+
         const filtered = data.filter(r => r.rating >= 3);
         const enriched = filtered.map(r => ({
           ...r,
@@ -805,6 +833,7 @@ const ReviewSection = () => {
       })
       .catch(error => {
         console.error("Error loading reviews:", error);
+        setDynamicReviews(fallbackReviews);
       })
       .finally(() => {
         setIsLoadingReviews(false);
