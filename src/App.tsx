@@ -786,43 +786,27 @@ const ReviewSection = () => {
     setIsModalOpen(false);
   }
   
-  const sampleReviews: Review[] = [
-    { name: "Rajesh", review: "Professional work and quick service. Highly recommended.", rating: 5 },
-    { name: "Kiran Babu", review: "Affordable price and clean pipeline installation.", rating: 5 },
-    { name: "Sai Kumar", review: "Very responsive team and quality materials.", rating: 5 },
-  ];
+  const SHEET_URL = "https://docs.google.com/spreadsheets/d/1yW_rXF6fW0N_Wv4v1E-4mZ3XW8u5mX3XW8u5m/edit";
 
   // Load reviews on mount
   useEffect(() => {
     const loadReviews = async () => {
       setIsLoadingReviews(true);
-      // Replace with your actual Google Sheet URL (Publicly shared as Viewer)
-      const sheetUrl = "https://docs.google.com/spreadsheets/d/1yW_rXF6fW0N_Wv4v1E-4mZ3XW8u5mX3XW8u5m/edit"; 
-      
       try {
-        // Fetch original reviews from sheet
-        const fetched = await fetchReviewsFromSheet(sheetUrl);
+        const fetched = await fetchReviewsFromSheet(SHEET_URL);
         
-        if (fetched.length > 0) {
-          // Simple Filtering logic for existing reviews
-          const approved = fetched
-            .map(r => {
-              const validation = validateReview(r);
-              return { ...r, positivityScore: validation.positivityScore, validation };
-            })
-            .filter(r => r.validation.isApproved)
-            .map(({ validation, ...r }) => r);
-          
-          // Sort by Priority (Rating then Positivity Score)
-          const sorted = sortReviews(approved).slice(0, 5);
-            
-          setDynamicReviews(sorted.length > 0 ? sorted : sampleReviews);
-        } else {
-          setDynamicReviews(sampleReviews);
-        }
+        const validated = fetched
+          .map(r => ({
+            ...r,
+            positivityScore: validateReview(r).positivityScore
+          }))
+          .filter(r => r.rating >= 3);
+
+        const sorted = sortReviews(validated);
+        setDynamicReviews(sorted);
       } catch (error) {
         console.error("Error loading reviews:", error);
-        setDynamicReviews(sampleReviews);
+        setDynamicReviews([]);
       } finally {
         setIsLoadingReviews(false);
       }
@@ -848,10 +832,7 @@ const ReviewSection = () => {
       const validation = validateReview(currentReview);
       const scoredReview = { ...currentReview, positivityScore: validation.positivityScore };
       
-      // 2. Submit to Google Sheets (SINGLE INSERT - 5 COLUMNS via Service)
-      await submitReviewToSheet({ name, rating, review: message });
-      
-      // 3. Logic for Approved Reviews (3, 4, or 5 stars + keywords)
+      // 2. Logic for Approved Reviews (3, 4, or 5 stars + keywords)
       if (validation.isApproved) {
         setLastApprovedReview(scoredReview);
         setDynamicReviews(prev => {
@@ -861,6 +842,10 @@ const ReviewSection = () => {
         });
         
         setIsModalOpen(true);
+        // NOTE: Submission happens inside the modal buttons (submitReviewToSheet)
+      } else {
+        // Submit unapproved reviews immediately as "N/R" (No popup shows)
+        await submitReviewToSheet({ name, rating, review: message }, "N/R");
       }
 
       setSubmitted(true);
@@ -1084,6 +1069,16 @@ const ReviewSection = () => {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => {
+                    if (lastApprovedReview) {
+                      submitReviewToSheet(
+                        { 
+                          name: lastApprovedReview.name, 
+                          rating: lastApprovedReview.rating, 
+                          review: lastApprovedReview.review 
+                        }, 
+                        "R"
+                      );
+                    }
                     setIsModalOpen(false);
                   }}
                   className="w-full bg-accent text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 hover:bg-primary transition-all shadow-md"
@@ -1092,7 +1087,19 @@ const ReviewSection = () => {
                   Post on Google Maps
                 </a>
                 <button 
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    if (lastApprovedReview) {
+                      submitReviewToSheet(
+                        { 
+                          name: lastApprovedReview.name, 
+                          rating: lastApprovedReview.rating, 
+                          review: lastApprovedReview.review 
+                        }, 
+                        "N/R"
+                      );
+                    }
+                    setIsModalOpen(false);
+                  }}
                   className="w-full text-gray-500 font-bold py-3 hover:text-primary transition-colors"
                 >
                   Close

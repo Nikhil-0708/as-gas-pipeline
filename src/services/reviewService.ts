@@ -86,13 +86,16 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw0HUY2uISbRFVRbD3uK
 /**
  * Submits a new review to Google Sheets
  */
-export async function submitReviewToSheet(review: { name: string, rating: number, review: string }): Promise<boolean> {
+export async function submitReviewToSheet(
+  review: { name: string; rating: number; review: string },
+  gmapsStatus: "R" | "N/R"
+): Promise<boolean> {
   const payload = {
     name: review.name,
     rating: review.rating,
     review: review.review,
     date: new Date().toISOString(),
-    Gmaps_Status: "N/R"
+    Gmaps_Status: gmapsStatus
   };
 
   try {
