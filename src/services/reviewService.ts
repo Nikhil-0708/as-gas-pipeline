@@ -7,6 +7,7 @@ export interface Review {
   timestamp?: string;
   positivityScore?: number;
   gmapsStatus?: "N/R" | "R";
+  isPriority?: boolean;
 }
 
 export interface ValidationResponse {

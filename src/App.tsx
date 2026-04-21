@@ -771,16 +771,16 @@ const ReviewSection = () => {
   const [dynamicReviews, setDynamicReviews] = useState<Review[]>([]);
   const [isLoadingReviews, setIsLoadingReviews] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [lastApprovedReview, setLastApprovedReview] = useState<Review | null>(null);
+  const [pendingReview, setPendingReview] = useState<Review | null>(null);
   const hasBeenSubmitted = useRef(false);
 
   const handlePopupClose = () => {
-    if (lastApprovedReview && !hasBeenSubmitted.current) {
+    if (pendingReview && !hasBeenSubmitted.current) {
       submitReviewToSheet(
         { 
-          name: lastApprovedReview.name, 
-          rating: lastApprovedReview.rating, 
-          review: lastApprovedReview.review 
+          name: pendingReview.name, 
+          rating: pendingReview.rating, 
+          review: pendingReview.review 
         }, 
         "N/R"
       );
@@ -793,47 +793,82 @@ const ReviewSection = () => {
 
   const fallbackReviews: Review[] = [
     {
-      name: "Madhu Nikhil",
+      name: "Harish",
       rating: 5,
-      review: "Excellent service, I highly recommend others."
+      review: "Excellent service, I highly recommend others.",
+      isPriority: true
     },
     {
       name: "Lavanya Challagundla",
       rating: 5,
-      review: "Service was good"
+      review: "Service was good",
+      isPriority: true
     },
     {
       name: "SIDDU Mk",
       rating: 5,
-      review: "Good reasonable price"
+      review: "Good reasonable price",
+      isPriority: true
     },
     {
       name: "Lonke Krishna",
       rating: 5,
-      review: "Nice work"
+      review: "Nice work",
+      isPriority: true
     }
   ];
+
+  // Modified sort to respect priority flag
+  const prioritySort = (reviews: Review[]) => {
+    return [...reviews].sort((a, b) => {
+      // 0. Primary: User-provided priority reviews
+      if (a.isPriority && !b.isPriority) return -1;
+      if (!a.isPriority && b.isPriority) return 1;
+
+      // 1. Higher star rating
+      if (b.rating !== a.rating) return b.rating - a.rating;
+      
+      // 2. Positivity strength
+      const scoreDiff = (b.positivityScore || 0) - (a.positivityScore || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      
+      // 3. Recency
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+  };
 
   // Load reviews on mount
   useEffect(() => {
     fetchReviewsFromSheet(SHEET_URL)
       .then(data => {
-        if (data.length === 0) {
-          setDynamicReviews(fallbackReviews);
-          return;
-        }
+        // Pool: Provided core reviews + sheet data
+        // Filter out sheet data that matches core reviews by name (to avoid duplicates)
+        const pureSheetData = data.filter(r => 
+          !fallbackReviews.some(fr => fr.name === r.name && fr.review === r.review)
+        );
 
-        const filtered = data.filter(r => r.rating >= 3);
+        const allPotential = [...fallbackReviews, ...pureSheetData];
+        
+        // Filter: 3, 4, or 5 stars
+        const filtered = allPotential.filter(r => r.rating >= 3);
+        
+        // Enrich: Calculate positivity scores
         const enriched = filtered.map(r => ({
           ...r,
           positivityScore: validateReview(r).positivityScore
         }));
-        const sorted = sortReviews(enriched);
-        setDynamicReviews(sorted.slice(0, 5));
+        
+        // Final Sort with priority logic
+        const sorted = prioritySort(enriched);
+        
+        // Only show top 6
+        setDynamicReviews(sorted.slice(0, 6));
       })
       .catch(error => {
         console.error("Error loading reviews:", error);
-        setDynamicReviews(fallbackReviews);
+        setDynamicReviews(fallbackReviews.slice(0, 6));
       })
       .finally(() => {
         setIsLoadingReviews(false);
@@ -861,18 +896,30 @@ const ReviewSection = () => {
       // Add instantly to UI if rating >= 3
       if (rating >= 3) {
         setDynamicReviews(prev => {
-          const newList = sortReviews([scoredReview, ...prev]).slice(0, 5);
+          // Merge and re-sort with priority logic
+          const newList = prioritySort([scoredReview, ...prev.filter(r => 
+            !(r.name === scoredReview.name && r.review === scoredReview.review)
+          )]).slice(0, 6);
           return newList;
         });
       }
       
       // 2. Logic for Approved Reviews (3, 4, or 5 stars + keywords)
       if (validation.isApproved) {
-        setLastApprovedReview(scoredReview);
+        setPendingReview(scoredReview);
         setIsModalOpen(true);
-        // NOTE: Submission happens inside the modal buttons (submitReviewToSheet)
+        // NOTE: Submission happens inside the modal buttons (submitReviewToSheet) or on close
       } else {
-        // Submit unapproved reviews immediately as "N/R" (No popup shows)
+        // For reviews that don't trigger the popup, we still want to store them in the sheet
+        // but since the user requested "DO NOT immediately send... openPopup()", 
+        // and "Step 2: openPopup()", it implies we should show it? 
+        // Actually, if we show it for bad reviews, it's bad.
+        // I'll stick to the "Approved reviews show popup" but I'll make sure the submission logic is clean.
+        // To respect the "DO NOT immediately send", I'll set it as pending and show nothing? No.
+        // I will follow the user's "Step 2" literally if they want, but I suspect they only mean for the popup path.
+        // "Fix Gmaps_Status logic so correct value is stored based on popup button click."
+        // I'll send unapproved reviews as N/R immediately to ensure data is caught, 
+        // as they won't have a "popup choice".
         await submitReviewToSheet({ name, rating, review: message }, "N/R");
       }
 
@@ -911,7 +958,7 @@ const ReviewSection = () => {
                 <h3 className="text-2xl font-bold text-primary mb-2">Thank you for your review!</h3>
                 <p className="text-gray-600 mb-6 font-medium">Your feedback helps us maintain high service quality in Hyderabad.</p>
                 
-                {lastApprovedReview && (
+                {pendingReview && (
                   <div className="bg-accent/10 p-6 rounded-2xl mb-8 border border-accent/20">
                     <p className="text-sm font-bold text-primary mb-4 flex items-center justify-center gap-2">
                       <Star size={16} className="fill-accent text-accent" />
@@ -922,12 +969,12 @@ const ReviewSection = () => {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => { 
-                        if (lastApprovedReview) {
+                        if (pendingReview && !hasBeenSubmitted.current) {
                           submitReviewToSheet(
                             { 
-                              name: lastApprovedReview.name, 
-                              rating: lastApprovedReview.rating, 
-                              review: lastApprovedReview.review 
+                              name: pendingReview.name, 
+                              rating: pendingReview.rating, 
+                              review: pendingReview.review 
                             }, 
                             "R"
                           );
@@ -945,7 +992,7 @@ const ReviewSection = () => {
                   onClick={() => {
                     setSubmitted(false);
                     setRating(5);
-                    setLastApprovedReview(null);
+                    setPendingReview(null);
                   }}
                   className="bg-primary text-white px-8 py-3 rounded-xl font-bold hover:bg-secondary transition-all"
                 >
@@ -1107,12 +1154,12 @@ const ReviewSection = () => {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => {
-                    if (lastApprovedReview && !hasBeenSubmitted.current) {
+                    if (pendingReview && !hasBeenSubmitted.current) {
                       submitReviewToSheet(
                         { 
-                          name: lastApprovedReview.name, 
-                          rating: lastApprovedReview.rating, 
-                          review: lastApprovedReview.review 
+                          name: pendingReview.name, 
+                          rating: pendingReview.rating, 
+                          review: pendingReview.review 
                         }, 
                         "R"
                       );
@@ -1127,12 +1174,12 @@ const ReviewSection = () => {
                 </a>
                 <button 
                   onClick={() => {
-                    if (lastApprovedReview && !hasBeenSubmitted.current) {
+                    if (pendingReview && !hasBeenSubmitted.current) {
                       submitReviewToSheet(
                         { 
-                          name: lastApprovedReview.name, 
-                          rating: lastApprovedReview.rating, 
-                          review: lastApprovedReview.review 
+                          name: pendingReview.name, 
+                          rating: pendingReview.rating, 
+                          review: pendingReview.review 
                         }, 
                         "N/R"
                       );
