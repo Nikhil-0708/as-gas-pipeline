@@ -32,17 +32,12 @@ const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
   const form = event.currentTarget;
   const formData = new FormData(form);
 
-  fetch("/", {
-    method: "POST",
-    body: formData
-  })
-  .then(() => {
-    const name = formData.get("name");
-    const phone = formData.get("phone");
-    const email = formData.get("email");
-    const message = formData.get("message");
+  const name = formData.get("name");
+  const phone = formData.get("phone");
+  const email = formData.get("email");
+  const message = formData.get("message");
 
-    const whatsappMessage = `
+  const whatsappMessage = `
 New Service Request
 
 Name: ${name}
@@ -52,12 +47,10 @@ Email: ${email}
 Message:
 ${message}
 `;
-    const whatsappURL = `https://wa.me/918688286504?text=${encodeURIComponent(whatsappMessage)}`;
+  const whatsappURL = `https://wa.me/918688286504?text=${encodeURIComponent(whatsappMessage)}`;
 
-    window.open(whatsappURL, "_blank");
-    form.reset();
-  })
-  .catch((error) => alert("Form submission failed"));
+  window.open(whatsappURL, "_blank");
+  form.reset();
 };
 
 // --- Components ---
@@ -779,40 +772,43 @@ const ReviewSection = () => {
   const [isLoadingReviews, setIsLoadingReviews] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [lastApprovedReview, setLastApprovedReview] = useState<Review | null>(null);
-  const isStatusUpdated = useRef(false);
-  const isMapsClicked = useRef(false);
+  const hasBeenSubmitted = useRef(false);
 
   const handlePopupClose = () => {
+    if (lastApprovedReview && !hasBeenSubmitted.current) {
+      submitReviewToSheet(
+        { 
+          name: lastApprovedReview.name, 
+          rating: lastApprovedReview.rating, 
+          review: lastApprovedReview.review 
+        }, 
+        "N/R"
+      );
+      hasBeenSubmitted.current = true;
+    }
     setIsModalOpen(false);
   }
   
-  const SHEET_URL = "https://docs.google.com/spreadsheets/d/1yW_rXF6fW0N_Wv4v1E-4mZ3XW8u5mX3XW8u5m/edit";
+  const SHEET_URL = "https://docs.google.com/spreadsheets/d/1CXKrIDh9jUlYyOQFfrmpe6hDc8vC-OUMBTQ9RJuy0Ug/edit";
 
   // Load reviews on mount
   useEffect(() => {
-    const loadReviews = async () => {
-      setIsLoadingReviews(true);
-      try {
-        const fetched = await fetchReviewsFromSheet(SHEET_URL);
-        
-        const validated = fetched
-          .map(r => ({
-            ...r,
-            positivityScore: validateReview(r).positivityScore
-          }))
-          .filter(r => r.rating >= 3);
-
-        const sorted = sortReviews(validated);
-        setDynamicReviews(sorted);
-      } catch (error) {
+    fetchReviewsFromSheet(SHEET_URL)
+      .then(data => {
+        const filtered = data.filter(r => r.rating >= 3);
+        const enriched = filtered.map(r => ({
+          ...r,
+          positivityScore: validateReview(r).positivityScore
+        }));
+        const sorted = sortReviews(enriched);
+        setDynamicReviews(sorted.slice(0, 5));
+      })
+      .catch(error => {
         console.error("Error loading reviews:", error);
-        setDynamicReviews([]);
-      } finally {
+      })
+      .finally(() => {
         setIsLoadingReviews(false);
-      }
-    };
-
-    loadReviews();
+      });
   }, []);
 
   const handleReviewSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -826,21 +822,24 @@ const ReviewSection = () => {
     const message = formData.get("message") as string;
 
     const currentReview: Review = { name, rating, review: message };
+    hasBeenSubmitted.current = false; // Reset submission flag for new review
 
     try {
       // 1. Simple Validation (Instant)
       const validation = validateReview(currentReview);
       const scoredReview = { ...currentReview, positivityScore: validation.positivityScore };
       
-      // 2. Logic for Approved Reviews (3, 4, or 5 stars + keywords)
-      if (validation.isApproved) {
-        setLastApprovedReview(scoredReview);
+      // Add instantly to UI if rating >= 3
+      if (rating >= 3) {
         setDynamicReviews(prev => {
-          // Rule: Show latest 3-5 with rating priority
           const newList = sortReviews([scoredReview, ...prev]).slice(0, 5);
           return newList;
         });
-        
+      }
+      
+      // 2. Logic for Approved Reviews (3, 4, or 5 stars + keywords)
+      if (validation.isApproved) {
+        setLastApprovedReview(scoredReview);
         setIsModalOpen(true);
         // NOTE: Submission happens inside the modal buttons (submitReviewToSheet)
       } else {
@@ -894,7 +893,17 @@ const ReviewSection = () => {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => { 
-                        isMapsClicked.current = true;
+                        if (lastApprovedReview) {
+                          submitReviewToSheet(
+                            { 
+                              name: lastApprovedReview.name, 
+                              rating: lastApprovedReview.rating, 
+                              review: lastApprovedReview.review 
+                            }, 
+                            "R"
+                          );
+                          hasBeenSubmitted.current = true;
+                        }
                       }}
                       className="inline-flex items-center gap-3 bg-accent text-white px-8 py-3 rounded-xl font-bold shadow-md hover:bg-primary transition-all text-base mb-2"
                     >
@@ -1069,7 +1078,7 @@ const ReviewSection = () => {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => {
-                    if (lastApprovedReview) {
+                    if (lastApprovedReview && !hasBeenSubmitted.current) {
                       submitReviewToSheet(
                         { 
                           name: lastApprovedReview.name, 
@@ -1078,6 +1087,7 @@ const ReviewSection = () => {
                         }, 
                         "R"
                       );
+                      hasBeenSubmitted.current = true;
                     }
                     setIsModalOpen(false);
                   }}
@@ -1088,7 +1098,7 @@ const ReviewSection = () => {
                 </a>
                 <button 
                   onClick={() => {
-                    if (lastApprovedReview) {
+                    if (lastApprovedReview && !hasBeenSubmitted.current) {
                       submitReviewToSheet(
                         { 
                           name: lastApprovedReview.name, 
@@ -1097,6 +1107,7 @@ const ReviewSection = () => {
                         }, 
                         "N/R"
                       );
+                      hasBeenSubmitted.current = true;
                     }
                     setIsModalOpen(false);
                   }}

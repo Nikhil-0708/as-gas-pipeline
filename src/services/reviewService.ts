@@ -98,18 +98,16 @@ export async function submitReviewToSheet(
     Gmaps_Status: gmapsStatus
   };
 
-  try {
-    await fetch(SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify(payload),
-    });
-    return true;
-  } catch (error) {
-    console.error("Submitting review failed:", error);
-    return false;
-  }
+  await fetch(SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {
+      "Content-Type": "text/plain"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  return true;
 }
 
 /**
@@ -119,19 +117,37 @@ export async function fetchReviewsFromSheet(sheetUrl: string): Promise<Review[]>
   try {
     // Convert regular sheet URL to CSV export URL
     const idMatch = sheetUrl.match(/\/d\/([^/]+)/);
-    if (!idMatch) throw new Error("Invalid Google Sheet URL");
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv`;
+    if (!idMatch) throw new Error("Invalid Google Sheet URL - Could not find Document ID");
+    const docId = idMatch[1];
+    
+    // Using the gviz/tq endpoint is often more robust for CORS when fetching public sheet data as CSV
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${docId}/gviz/tq?tqx=out:csv&gid=0&_cb=${Date.now()}`;
 
     const response = await fetch(csvUrl);
+    
+    if (!response.ok) {
+      const errorMsg = response.status === 401 || response.status === 403
+        ? "Access Denied: The Google Sheet is private. Please go to 'Share' and set 'General access' to 'Anyone with the link can view'."
+        : `Network Error: Received status ${response.status} from Google Sheets.`;
+      throw new Error(errorMsg);
+    }
+
     const csvText = await response.text();
+    
+    if (!csvText || csvText.trim().length === 0 || csvText.startsWith('<!DOCTYPE html>')) {
+      throw new Error("Invalid Response: Likely redirected to a login page. Please ensure the sheet is PUBLICLY shared with 'Anyone with the link'.");
+    }
     
     // Simple CSV parser (assuming columns: Name, Rating, Review, Date, Gmaps_Status)
     const lines = csvText.split('\n').slice(1); // Skip header
     const rawReviews = lines
-      .map(line => {
+      .map((line) => {
+        if (!line.trim()) return null;
         // Handle basic quoted strings in CSV
         const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        if (parts.length < 4) return null;
+        
+        // We expect at least columns 0, 1, 2 (Name, Rating, Review)
+        if (parts.length < 3) return null;
         
         const review: Review = {
           name: parts[0]?.replace(/^"|"$/g, '').trim() || "Anonymous",
@@ -147,7 +163,15 @@ export async function fetchReviewsFromSheet(sheetUrl: string): Promise<Review[]>
 
     return reviews;
   } catch (error) {
-    console.error("Fetch Error:", error);
+    if (error instanceof Error && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+      console.error("CRITICAL ERROR: Failed to fetch the Google Sheet. \n\n" +
+        "POSSIBLE CAUSES:\n" +
+        "1. The Sheet is PRIVATE: Click 'Share' -> 'General access' -> 'Anyone with the link' -> 'Viewer'.\n" +
+        "2. Ad-blockers or restrictive corporate firewalls are blocking docs.google.com.\n\n" +
+        "Please verify your sharing settings at the link in your console.");
+    } else {
+      console.error("Fetch Error:", error);
+    }
     return [];
   }
 }
