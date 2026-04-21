@@ -82,15 +82,14 @@ export function sortReviews(reviews: Review[]): Review[] {
   });
 }
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw0HUY2uISbRFVRbD3uKlA_77fIZSu5IAZLz2X7JZ_PikX9gVlM2NE3aHGpUSmMFQFFsQ/exec";
+const SCRIPT_URL =
+"https://script.google.com/macros/s/AKfycbw0HUY2uISbRFVRbD3uKlA_77fIZSu5IAZLz2X7JZ_PikX9gVlM2NE3aHGpUSmMFQFFsQ/exec";
 
-/**
- * Submits a new review to Google Sheets
- */
 export async function submitReviewToSheet(
   review: { name: string; rating: number; review: string },
   gmapsStatus: "R" | "N/R"
-): Promise<boolean> {
+) {
+
   const payload = {
     name: review.name,
     rating: review.rating,
@@ -108,7 +107,6 @@ export async function submitReviewToSheet(
     body: JSON.stringify(payload)
   });
 
-  return true;
 }
 
 /**

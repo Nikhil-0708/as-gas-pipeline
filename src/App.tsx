@@ -774,6 +774,23 @@ const ReviewSection = () => {
   const [pendingReview, setPendingReview] = useState<Review | null>(null);
   const hasBeenSubmitted = useRef(false);
 
+  const handleGmapsClick = () => {
+    if (pendingReview && !hasBeenSubmitted.current) {
+      submitReviewToSheet(
+        { 
+          name: pendingReview.name, 
+          rating: pendingReview.rating, 
+          review: pendingReview.review 
+        }, 
+        "R"
+      );
+      hasBeenSubmitted.current = true;
+    }
+    // Using the verified link for this business
+    window.open("https://maps.app.goo.gl/GXksoDh9GP5jS5AL8", "_blank");
+    setIsModalOpen(false);
+  };
+
   const handlePopupClose = () => {
     if (pendingReview && !hasBeenSubmitted.current) {
       submitReviewToSheet(
@@ -904,23 +921,13 @@ const ReviewSection = () => {
         });
       }
       
-      // 2. Logic for Approved Reviews (3, 4, or 5 stars + keywords)
+      // Logic for reviews (3, 4, or 5 stars + keywords)
+      // Step 1: No immediate submitReviewToSheet here
       if (validation.isApproved) {
         setPendingReview(scoredReview);
         setIsModalOpen(true);
-        // NOTE: Submission happens inside the modal buttons (submitReviewToSheet) or on close
       } else {
-        // For reviews that don't trigger the popup, we still want to store them in the sheet
-        // but since the user requested "DO NOT immediately send... openPopup()", 
-        // and "Step 2: openPopup()", it implies we should show it? 
-        // Actually, if we show it for bad reviews, it's bad.
-        // I'll stick to the "Approved reviews show popup" but I'll make sure the submission logic is clean.
-        // To respect the "DO NOT immediately send", I'll set it as pending and show nothing? No.
-        // I will follow the user's "Step 2" literally if they want, but I suspect they only mean for the popup path.
-        // "Fix Gmaps_Status logic so correct value is stored based on popup button click."
-        // I'll send unapproved reviews as N/R immediately to ensure data is caught, 
-        // as they won't have a "popup choice".
-        await submitReviewToSheet({ name, rating, review: message }, "N/R");
+        // For unapproved reviews, we'll follow the "NO submit" instruction for the form handler
       }
 
       setSubmitted(true);
@@ -964,27 +971,12 @@ const ReviewSection = () => {
                       <Star size={16} className="fill-accent text-accent" />
                       Help others find us!
                     </p>
-                    <a 
-                      href="https://maps.app.goo.gl/GXksoDh9GP5jS5AL8"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => { 
-                        if (pendingReview && !hasBeenSubmitted.current) {
-                          submitReviewToSheet(
-                            { 
-                              name: pendingReview.name, 
-                              rating: pendingReview.rating, 
-                              review: pendingReview.review 
-                            }, 
-                            "R"
-                          );
-                          hasBeenSubmitted.current = true;
-                        }
-                      }}
+                    <button 
+                      onClick={handleGmapsClick}
                       className="inline-flex items-center gap-3 bg-accent text-white px-8 py-3 rounded-xl font-bold shadow-md hover:bg-primary transition-all text-base mb-2"
                     >
                       Post on Google Maps <ExternalLink size={18} />
-                    </a>
+                    </button>
                   </div>
                 )}
 
@@ -1149,44 +1141,15 @@ const ReviewSection = () => {
               </p>
 
               <div className="space-y-4">
-                <a 
-                  href="https://maps.app.goo.gl/GXksoDh9GP5jS5AL8"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => {
-                    if (pendingReview && !hasBeenSubmitted.current) {
-                      submitReviewToSheet(
-                        { 
-                          name: pendingReview.name, 
-                          rating: pendingReview.rating, 
-                          review: pendingReview.review 
-                        }, 
-                        "R"
-                      );
-                      hasBeenSubmitted.current = true;
-                    }
-                    setIsModalOpen(false);
-                  }}
+                <button 
+                  onClick={handleGmapsClick}
                   className="w-full bg-accent text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 hover:bg-primary transition-all shadow-md"
                 >
                   <ExternalLink size={20} />
                   Post on Google Maps
-                </a>
+                </button>
                 <button 
-                  onClick={() => {
-                    if (pendingReview && !hasBeenSubmitted.current) {
-                      submitReviewToSheet(
-                        { 
-                          name: pendingReview.name, 
-                          rating: pendingReview.rating, 
-                          review: pendingReview.review 
-                        }, 
-                        "N/R"
-                      );
-                      hasBeenSubmitted.current = true;
-                    }
-                    setIsModalOpen(false);
-                  }}
+                  onClick={() => handlePopupClose()}
                   className="w-full text-gray-500 font-bold py-3 hover:text-primary transition-colors"
                 >
                   Close
